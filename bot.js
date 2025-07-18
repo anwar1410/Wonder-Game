@@ -1,5 +1,5 @@
 // بوت ديسكورد باستخدام discord.js v14
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, StringSelectMenuBuilder, InteractionResponseType } = require('discord.js');
 require('dotenv').config();
 const fs = require('fs');
 const SETTINGS_FILE = 'settings.json';
@@ -22,13 +22,26 @@ function getGuildSettings(guildId) {
       gameMessage: { text: null, link: null, code: null, roleId: null },
       endMessage: { text: null, roleId: null },
       logRoomId: null,
-      botStopped: false // جديد: حالة البوت
+      botStopped: false, // جديد: حالة البوت
+      infos: { // جديد: روابط الاينفو
+        start_game: null,
+        start_vote: null,
+        end_game: null
+      }
     };
     saveSettingsAll(all);
   }
   // إضافة الخاصية إذا لم تكن موجودة (للسيرفرات القديمة)
   if (all[guildId].botStopped === undefined) {
     all[guildId].botStopped = false;
+    saveSettingsAll(all);
+  }
+  if (all[guildId].infos === undefined) {
+    all[guildId].infos = {
+      start_game: null,
+      start_vote: null,
+      end_game: null
+    };
     saveSettingsAll(all);
   }
   return all[guildId];
@@ -40,11 +53,23 @@ function saveGuildSettings(guildId, settings) {
 }
 
 async function isAdmin(interaction) {
-  let member = interaction.member;
-  if (!member && interaction.guild) {
-    member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  try {
+    let member = interaction.member;
+    if (!member && interaction.guild) {
+      member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    }
+    
+    // التحقق من أن member موجود وصحيح
+    if (!member || !member.permissions) {
+      return false;
+    }
+    
+    // التحقق من صلاحية Administrator
+    return member.permissions.has('Administrator');
+  } catch (error) {
+    console.error('خطأ في دالة isAdmin:', error);
+    return false;
   }
-  return member && member.permissions.has('Administrator');
 }
 
 const TOKEN = process.env.BOT_TOKEN; // ضع توكن البوت في ملف .env
@@ -176,6 +201,7 @@ client.on(Events.InteractionCreate, async interaction => {
           { label: 'تعيين رسالة الاقيام', value: 'set_game_message', description: 'تعيين نص ورابط وكود القيم' },
           { label: 'تعيين نص انهاء القيم', value: 'set_end_message', description: 'تعيين نص ومنشن رسالة انهاء القيم' },
           { label: 'تعيين لوق الاقيام', value: 'set_log_room', description: 'تعيين قناة اللوق' },
+          { label: 'تعيين اينفوهات', value: 'set_infos', description: 'تعيين صور الاينفو لأزرار القيم' },
           { label: 'رؤية التعديلات', value: 'view_changes', description: 'عرض جميع التعيينات الحالية' },
           { label: 'تحديث الصفحة', value: 'refresh_admin', description: 'تحديث الصفحة فقط' },
         ]);
@@ -225,6 +251,9 @@ client.on(Events.InteractionCreate, async interaction => {
           { name: 'رسالة القيم', value: settings.gameMessage?.text ? `النص: ${settings.gameMessage.text}\nالرابط: ${settings.gameMessage.link || 'غير محدد'}\nالكود: ${settings.gameMessage.code || 'غير محدد'}\nالرتبة: ${settings.gameMessage.roleId ? `<@&${settings.gameMessage.roleId}>` : 'غير محدد'}` : 'غير محدد', inline: false },
           { name: 'نص إنهاء القيم', value: settings.endMessage?.text ? `النص: ${settings.endMessage.text}\nالرتبة: ${settings.endMessage.roleId ? `<@&${settings.endMessage.roleId}>` : 'غير محدد'}` : 'غير محدد', inline: false },
           { name: 'قناة اللوق', value: settings.logRoomId ? `<#${settings.logRoomId}>` : 'غير محدد', inline: false },
+          { name: 'اينفو بدء قيم', value: settings.infos?.start_game || 'غير محدد', inline: false },
+          { name: 'اينفو بدء تصويت', value: settings.infos?.start_vote || 'غير محدد', inline: false },
+          { name: 'اينفو إنهاء قيم', value: settings.infos?.end_game || 'غير محدد', inline: false },
         );
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -423,6 +452,55 @@ client.on(Events.InteractionCreate, async interaction => {
           }
         ]
       });
+    } else if (selected === 'set_infos') {
+      return interaction.showModal({
+        custom_id: 'modal_set_infos',
+        title: 'تعيين اينفوهات',
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'start_game_info',
+                label: 'رابط بدء قيم (اختياري)',
+                style: 1,
+                min_length: 1,
+                max_length: 300,
+                required: false
+              }
+            ]
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'start_vote_info',
+                label: 'رابط بدء تصويت (اختياري)',
+                style: 1,
+                min_length: 1,
+                max_length: 300,
+                required: false
+              }
+            ]
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'end_game_info',
+                label: 'رابط إنهاء قيم (اختياري)',
+                style: 1,
+                min_length: 1,
+                max_length: 300,
+                required: false
+              }
+            ]
+          }
+        ]
+      });
     } else if (selected === 'refresh_admin') {
       const settings = getGuildSettings(interaction.guild.id);
       // إعادة تعيين: فقط تحديث الصفحة (إعادة إرسال نفس الرسالة)
@@ -442,6 +520,7 @@ client.on(Events.InteractionCreate, async interaction => {
           { label: 'تعيين رسالة الاقيام', value: 'set_game_message', description: 'تعيين نص ورابط وكود القيم' },
           { label: 'تعيين نص انهاء القيم', value: 'set_end_message', description: 'تعيين نص ومنشن رسالة انهاء القيم' },
           { label: 'تعيين لوق الاقيام', value: 'set_log_room', description: 'تعيين قناة اللوق' },
+          { label: 'تعيين اينفوهات', value: 'set_infos', description: 'تعيين صور الاينفو لأزرار القيم' },
           { label: 'رؤية التعديلات', value: 'view_changes', description: 'عرض جميع التعيينات الحالية' },
           { label: 'تحديث الصفحة', value: 'refresh_admin', description: 'تحديث الصفحة فقط' },
         ]);
@@ -718,14 +797,14 @@ client.on(Events.InteractionCreate, async interaction => {
     let settings = getGuildSettings(interaction.guild.id);
     try {
       if (interaction.customId === 'modal_set_game_room') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
         const roomId = interaction.fields.getTextInputValue('game_room_id');
         settings.gameRoomId = roomId;
         saveGuildSettings(interaction.guild.id, settings);
         await sendLog(settings.logRoomId, interaction, `تم تعيين روم القيم إلى <#${roomId}>`);
         return interaction.editReply({ content: '✅ تم تعيين روم القيم بنجاح.' });
       } else if (interaction.customId === 'modal_set_vote_message') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
         const text = interaction.fields.getTextInputValue('vote_text');
         const emoji = interaction.fields.getTextInputValue('vote_emoji');
         const roleId = interaction.fields.getTextInputValue('vote_role');
@@ -736,7 +815,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await sendLog(settings.logRoomId, interaction, `تم تعيين رسالة التصويت إلى:\n**النص:** ${text}\n**الإيموجي:** ${emoji}\n**الرتبة:** <@&${roleId}>`);
         return interaction.editReply({ content: '✅ تم تعيين رسالة التصويت بنجاح.' });
       } else if (interaction.customId === 'modal_set_game_message') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
         const text = interaction.fields.getTextInputValue('game_text');
         const link = interaction.fields.getTextInputValue('game_link');
         const code = interaction.fields.getTextInputValue('game_code');
@@ -749,7 +828,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await sendLog(settings.logRoomId, interaction, `تم تعيين رسالة القيم إلى:\n**النص:** ${text}\n**الكود:** ${code}\n**الرابط:** ${link}\n**الرتبة:** <@&${roleId}>`);
         return interaction.editReply({ content: '✅ تم تعيين رسالة القيم بنجاح.' });
       } else if (interaction.customId === 'modal_set_log_room') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
         const oldLogRoomId = settings.logRoomId;
         const logRoomId = interaction.fields.getTextInputValue('log_room_id');
         settings.logRoomId = logRoomId;
@@ -757,7 +836,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await sendLog(logRoomId, interaction, `تم تعيين روم اللوق إلى <#${logRoomId}> بواسطة <@${interaction.user.id}>`);
         return interaction.editReply({ content: '✅ تم تعيين روم اللوق بنجاح.' });
       } else if (interaction.customId === 'modal_set_end_message') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
         const text = interaction.fields.getTextInputValue('end_text');
         const roleId = interaction.fields.getTextInputValue('end_role');
         settings.endMessage.text = text;
@@ -765,6 +844,20 @@ client.on(Events.InteractionCreate, async interaction => {
         saveGuildSettings(interaction.guild.id, settings);
         await sendLog(settings.logRoomId, interaction, `تم تعيين نص انهاء القيم إلى:\n**النص:** ${text}\n**الرتبة:** <@&${roleId}>`);
         return interaction.editReply({ content: '✅ تم تعيين نص انهاء القيم بنجاح.' });
+      } else if (interaction.customId === 'modal_set_infos') {
+        await interaction.deferReply({ flags: 64 });
+        const startGameInfo = interaction.fields.getTextInputValue('start_game_info');
+        const startVoteInfo = interaction.fields.getTextInputValue('start_vote_info');
+        const endGameInfo = interaction.fields.getTextInputValue('end_game_info');
+        
+        // حفظ الاينفو (فقط إذا لم تكن فارغة)
+        settings.infos.start_game = startGameInfo.trim() || null;
+        settings.infos.start_vote = startVoteInfo.trim() || null;
+        settings.infos.end_game = endGameInfo.trim() || null;
+        
+        saveGuildSettings(interaction.guild.id, settings);
+        await sendLog(settings.logRoomId, interaction, `تم تعيين اينفوهات القيم بنجاح.`);
+        return interaction.editReply({ content: '✅ تم تعيين اينفوهات القيم بنجاح.' });
       }
     } catch (err) {
       console.error('خطأ أثناء معالجة بيانات المودال:', err);
@@ -842,71 +935,73 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     // زر بدء قيم
     if (interaction.customId === 'start_game') {
-      if (!settings.gameRoomId || !settings.gameMessage.text || !settings.gameMessage.link || !settings.gameMessage.code || !settings.gameMessage.roleId) {
+      if (!settings.gameRoomId || !settings.gameMessage?.text || !settings.gameMessage?.link || !settings.gameMessage?.code || !settings.gameMessage?.roleId) {
         return interaction.reply({ content: '❌ يجب تعيين جميع إعدادات القيم أولاً من خلال الإدارة.', ephemeral: true });
       }
+      await interaction.deferReply({ flags: 64 });
       const gameChannel = await interaction.guild.channels.fetch(settings.gameRoomId).catch(() => null);
       if (!gameChannel) {
-        return interaction.reply({ content: '❌ لم يتم العثور على روم القيم. تحقق من صحة الآيدي.', ephemeral: true });
+        return interaction.editReply({ content: '❌ لم يتم العثور على روم القيم. تحقق من صحة الآيدي.' });
       }
-      // إرسال رسالة القيم كنص عادي
-      const mention = `<@&${settings.gameMessage.roleId}>`;
-      const messageText = `**${settings.gameMessage.text}**\n\n**${settings.gameMessage.code}**\n\n**${settings.gameMessage.link}**\n\n${mention}`;
-      try {
-        await gameChannel.send(messageText);
-        await interaction.reply({ content: '✅ تم إرسال رسالة القيم بنجاح.', ephemeral: true });
-      } catch (err) {
-        console.error('خطأ عند إرسال رسالة القيم:', err);
-        await interaction.reply({ content: '❌ حدث خطأ أثناء إرسال رسالة القيم.', ephemeral: true });
+      const gameEmbed = new EmbedBuilder()
+        .setTitle('🎮 قيم جديد!')
+        .setDescription(settings.gameMessage.text)
+        .setColor(0x00ff99)
+        .addFields(
+          { name: '🎯 الكود', value: `\`${settings.gameMessage.code}\``, inline: true },
+          { name: '🔗 الرابط', value: settings.gameMessage.link, inline: true }
+        )
+        .setTimestamp()
+        .setFooter({ text: 'تم إرسال بواسطة نظام القيم', iconURL: interaction.guild.iconURL() });
+      
+      // استخدام الاينفو إذا كان موجوداً، وإلا استخدم الصورة الافتراضية
+      if (settings.infos?.start_game && settings.infos.start_game.trim() !== '') {
+        gameEmbed.setImage(settings.infos.start_game);
+      } else if (settings.embedImage) {
+        gameEmbed.setImage(settings.embedImage);
       }
-      // لا ترسل رسالة القيم في اللوق، فقط sendButtonLog
+      
+      await gameChannel.send({ content: `<@&${settings.gameMessage.roleId}>`, embeds: [gameEmbed] });
       await sendButtonLog('start_game', 'بدء قيم');
-    }
-    // زر بدء تصويت قيم
-    else if (interaction.customId === 'start_vote') {
-      if (!settings.voteMessage.text || !settings.voteMessage.emoji || !settings.voteMessage.roleId || !settings.gameRoomId) {
+      await interaction.editReply({ content: '✅ تم إرسال رسالة القيم بنجاح.' });
+    } else if (interaction.customId === 'start_vote') {
+      if (!settings.gameRoomId || !settings.voteMessage?.text || !settings.voteMessage?.emoji || !settings.voteMessage?.roleId) {
         return interaction.reply({ content: '❌ يجب تعيين رسالة التصويت وروم القيم والرتبة أولاً من خلال الإدارة.', ephemeral: true });
       }
+      await interaction.deferReply({ flags: 64 });
       const gameChannel = await interaction.guild.channels.fetch(settings.gameRoomId).catch(() => null);
       if (!gameChannel) {
-        return interaction.reply({ content: '❌ لم يتم العثور على روم القيم. تحقق من صحة الآيدي.', ephemeral: true });
+        return interaction.editReply({ content: '❌ لم يتم العثور على روم القيم. تحقق من صحة الآيدي.' });
       }
-      // إرسال رسالة التصويت كنص عادي
-      const mention = `<@&${settings.voteMessage.roleId}>`;
-      const messageText = `**${settings.voteMessage.text}**\n\n${mention}`;
-      let voteMsg;
-      try {
-        voteMsg = await gameChannel.send(messageText);
-        console.log('تم إرسال رسالة التصويت:', voteMsg.id);
-        // إضافة الإيموجي كرد فعل
-        try {
-          let emoji = settings.voteMessage.emoji;
-          const customEmojiMatch = emoji.match(/^<a?:(\w+):(\d+)>$/);
-          if (customEmojiMatch) {
-            emoji = `${customEmojiMatch[1]}:${customEmojiMatch[2]}`;
-          }
-          await voteMsg.react(emoji);
-          console.log('تمت إضافة الإيموجي:', emoji);
-        } catch (err) {
-          console.error('خطأ عند إضافة الإيموجي:', err);
-        }
-        await interaction.reply({ content: '✅ تم إرسال رسالة التصويت بنجاح.', ephemeral: true });
-      } catch (err) {
-        console.error('خطأ عند إرسال رسالة التصويت:', err);
-        await interaction.reply({ content: '❌ حدث خطأ أثناء إرسال رسالة التصويت.', ephemeral: true });
+      const voteEmbed = new EmbedBuilder()
+        .setTitle('🗳️ تصويت قيم!')
+        .setDescription(settings.voteMessage.text)
+        .setColor(0x3366ff)
+        .setTimestamp()
+        .setFooter({ text: 'تم إرسال بواسطة نظام القيم', iconURL: interaction.guild.iconURL() });
+      
+      // استخدام الاينفو إذا كان موجوداً، وإلا استخدم الصورة الافتراضية
+      if (settings.infos?.start_vote && settings.infos.start_vote.trim() !== '') {
+        voteEmbed.setImage(settings.infos.start_vote);
+      } else if (settings.embedImage) {
+        voteEmbed.setImage(settings.embedImage);
       }
-      // لا ترسل رسالة التصويت في اللوق، فقط sendButtonLog
+      
+      const voteMessage = await gameChannel.send({ content: `<@&${settings.voteMessage.roleId}>`, embeds: [voteEmbed] });
+      await voteMessage.react(settings.voteMessage.emoji);
       await sendButtonLog('start_vote', 'بدء تصويت قيم');
-    }
-    // زر إنهاء قيم
-    else if (interaction.customId === 'end_game') {
-      if (!settings.gameRoomId || !settings.endMessage.text || !settings.endMessage.roleId) {
+      await interaction.editReply({ content: '✅ تم إرسال رسالة التصويت بنجاح.' });
+    } else if (interaction.customId === 'end_game') {
+      if (!settings.gameRoomId || !settings.endMessage?.text || !settings.endMessage?.roleId) {
         return interaction.reply({ content: '❌ يجب تعيين روم القيم ونص انهاء القيم والرتبة أولاً من خلال الإدارة.', ephemeral: true });
       }
+      await interaction.deferReply({ flags: 64 });
       const gameChannel = await interaction.guild.channels.fetch(settings.gameRoomId).catch(() => null);
       if (!gameChannel) {
-        return interaction.reply({ content: '❌ لم يتم العثور على روم القيم. تحقق من صحة الآيدي.', ephemeral: true });
+        return interaction.editReply({ content: '❌ لم يتم العثور على روم القيم. تحقق من صحة الآيدي.' });
       }
+      
+      // حذف جميع الرسائل من روم القيم
       let deleted = 0;
       try {
         const msgs = await gameChannel.messages.fetch({ limit: 100 });
@@ -919,18 +1014,24 @@ client.on(Events.InteractionCreate, async interaction => {
       } catch (err) {
         console.error('خطأ عند حذف الرسائل:', err);
       }
-      // إرسال رسالة انهاء القيم كنص عادي
-      const mention = `<@&${settings.endMessage.roleId}>`;
-      const messageText = `**${settings.endMessage.text}**\n\n${mention}`;
-      try {
-        await gameChannel.send(messageText);
-        await interaction.reply({ content: `✅ تم إنهاء القيم وحذف ${deleted} رسالة.`, ephemeral: true });
-      } catch (err) {
-        console.error('خطأ عند إرسال رسالة انهاء القيم:', err);
-        await interaction.reply({ content: '❌ حدث خطأ أثناء إرسال رسالة انهاء القيم.', ephemeral: true });
+      
+      const endEmbed = new EmbedBuilder()
+        .setTitle('🏁 انتهى القيم!')
+        .setDescription(settings.endMessage.text)
+        .setColor(0xff3333)
+        .setTimestamp()
+        .setFooter({ text: 'تم إرسال بواسطة نظام القيم', iconURL: interaction.guild.iconURL() });
+      
+      // استخدام الاينفو إذا كان موجوداً، وإلا استخدم الصورة الافتراضية
+      if (settings.infos?.end_game && settings.infos.end_game.trim() !== '') {
+        endEmbed.setImage(settings.infos.end_game);
+      } else if (settings.embedImage) {
+        endEmbed.setImage(settings.embedImage);
       }
-      // لا ترسل رسالة انهاء القيم في اللوق، فقط sendButtonLog
+      
+      await gameChannel.send({ content: `<@&${settings.endMessage.roleId}>`, embeds: [endEmbed] });
       await sendButtonLog('end_game', 'إنهاء قيم');
+      await interaction.editReply({ content: `✅ تم إنهاء القيم وحذف ${deleted} رسالة.` });
     }
   }
   // تفاعل زر إيقاف/تشغيل البوت في المطور
