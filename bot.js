@@ -935,7 +935,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     // زر بدء قيم
     if (interaction.customId === 'start_game') {
-      if (!settings.gameRoomId || !settings.gameMessage?.text || !settings.gameMessage?.link || !settings.gameMessage?.code || !settings.gameMessage?.roleId) {
+      if (!settings.gameRoomId || !settings.gameMessage || !settings.gameMessage.text || !settings.gameMessage.link || !settings.gameMessage.code || !settings.gameMessage.roleId) {
         return interaction.reply({ content: '❌ يجب تعيين جميع إعدادات القيم أولاً من خلال الإدارة.', ephemeral: true });
       }
       await interaction.deferReply({ flags: 64 });
@@ -965,7 +965,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await sendButtonLog('start_game', 'بدء قيم');
       await interaction.editReply({ content: '✅ تم إرسال رسالة القيم بنجاح.' });
     } else if (interaction.customId === 'start_vote') {
-      if (!settings.gameRoomId || !settings.voteMessage?.text || !settings.voteMessage?.emoji || !settings.voteMessage?.roleId) {
+      if (!settings.gameRoomId || !settings.voteMessage || !settings.voteMessage.text || !settings.voteMessage.emoji || !settings.voteMessage.roleId) {
         return interaction.reply({ content: '❌ يجب تعيين رسالة التصويت وروم القيم والرتبة أولاً من خلال الإدارة.', ephemeral: true });
       }
       await interaction.deferReply({ flags: 64 });
@@ -992,7 +992,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await sendButtonLog('start_vote', 'بدء تصويت قيم');
       await interaction.editReply({ content: '✅ تم إرسال رسالة التصويت بنجاح.' });
     } else if (interaction.customId === 'end_game') {
-      if (!settings.gameRoomId || !settings.endMessage?.text || !settings.endMessage?.roleId) {
+      if (!settings.gameRoomId || !settings.endMessage || !settings.endMessage.text || !settings.endMessage.roleId) {
         return interaction.reply({ content: '❌ يجب تعيين روم القيم ونص انهاء القيم والرتبة أولاً من خلال الإدارة.', ephemeral: true });
       }
       await interaction.deferReply({ flags: 64 });
