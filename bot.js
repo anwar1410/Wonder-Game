@@ -122,6 +122,10 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
     if (interaction.commandName === 'اقيام') {
+      // تحقق من صلاحية الأدمن
+      if (!(await isAdmin(interaction))) {
+        return interaction.reply({ content: '❌ هذا الأمر مخصص فقط للأدمن.', ephemeral: true });
+      }
       // ايمبيد القيم
       const settings = getGuildSettings(interaction.guild.id);
       const embed = new EmbedBuilder()
