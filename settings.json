@@ -1,0 +1,40 @@
+{
+  "gameRoomId": null,
+  "voteMessage": {
+    "text": null,
+    "emoji": null,
+    "roleId": null
+  },
+  "gameMessage": {
+    "text": null,
+    "link": null,
+    "code": null,
+    "roleId": null
+  },
+  "endMessage": {
+    "text": null,
+    "roleId": null
+  },
+  "logRoomId": null,
+  "1368922074936115280": {
+    "gameRoomId": "1393448027523649696",
+    "voteMessage": {
+      "text": "تصويت قيم 20 شخص و نبدا على طول قيم",
+      "emoji": "<:hh:1390364951264104558>",
+      "roleId": "1394227759869464717"
+    },
+    "gameMessage": {
+      "text": "بديينااا قييمم حياااكم الله",
+      "link": "https://www.roblox.com/games/start?placeId=7711635737&launchData=joinCode%3D5b1azsuf",
+      "code": "5b1azsuf",
+      "roleId": "1394227759869464717"
+    },
+    "endMessage": {
+      "text": "تم انتهاء الاقيام لهذا اليوم يعطيكم العافية",
+      "roleId": "1394227759869464717"
+    },
+    "logRoomId": "1388450243795882034",
+    "embedImage": "https://media.discordapp.net/attachments/1303476251746504726/1388435070141861918/Clean_20250626_130356_.png?ex=687b566c&is=687a04ec&hm=b313d0f6c9b6f2fac8415fe5de7ca16bbf7945544033defacb76f74556fa7ccb&=&format=webp&quality=lossless",
+    "botStopped": false
+  }
+}
