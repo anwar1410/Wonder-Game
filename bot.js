@@ -2,16 +2,45 @@
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, StringSelectMenuBuilder, InteractionResponseType } = require('discord.js');
 require('dotenv').config();
 const fs = require('fs');
+const path = require('path');
 const SETTINGS_FILE = 'settings.json';
+const BACKUP_FILE = 'settings_backup.json';
+
 function loadSettingsAll() {
   try {
-    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-  } catch {
+    // محاولة تحميل الملف الرئيسي
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+    // إذا لم يوجد الملف الرئيسي، جرب النسخة الاحتياطية
+    if (fs.existsSync(BACKUP_FILE)) {
+      console.log('استرجاع الإعدادات من النسخة الاحتياطية...');
+      const backupData = fs.readFileSync(BACKUP_FILE, 'utf8');
+      const backup = JSON.parse(backupData);
+      // استعادة النسخة الاحتياطية كملف رئيسي
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(backup, null, 2));
+      return backup;
+    }
+    return {};
+  } catch (error) {
+    console.error('خطأ في تحميل الإعدادات:', error);
     return {};
   }
 }
+
 function saveSettingsAll(allSettings) {
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(allSettings, null, 2));
+  try {
+    // حفظ نسخة احتياطية أولاً
+    if (fs.existsSync(SETTINGS_FILE)) {
+      fs.copyFileSync(SETTINGS_FILE, BACKUP_FILE);
+    }
+    // حفظ الملف الرئيسي
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(allSettings, null, 2));
+    console.log('تم حفظ الإعدادات بنجاح');
+  } catch (error) {
+    console.error('خطأ في حفظ الإعدادات:', error);
+  }
 }
 function getGuildSettings(guildId) {
   const all = loadSettingsAll();
@@ -129,6 +158,19 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  
+  // نظام حفظ تلقائي للإعدادات كل 5 دقائق
+  setInterval(() => {
+    try {
+      const currentSettings = loadSettingsAll();
+      if (Object.keys(currentSettings).length > 0) {
+        saveSettingsAll(currentSettings);
+        console.log('حفظ تلقائي للإعدادات تم بنجاح');
+      }
+    } catch (error) {
+      console.error('خطأ في الحفظ التلقائي:', error);
+    }
+  }, 5 * 60 * 1000); // كل 5 دقائق
 });
 
 // رابط صورة الشعار الجديد
@@ -227,6 +269,7 @@ client.on(Events.InteractionCreate, async interaction => {
           { label: 'رؤية السيرفرات', value: 'dev_view_guilds', description: 'عرض قائمة السيرفرات التي يعمل فيها البوت' },
           { label: 'تغيير الايمبيد', value: 'dev_change_embed', description: 'تغيير صورة الايمبيد الافتراضية لسيرفر معين' },
           { label: 'إيقاف & تشغيل البوت', value: 'dev_toggle_bot', description: 'إيقاف أو تشغيل البوت في سيرفر معين' },
+          { label: 'استرجاع الإعدادات', value: 'dev_restore_settings', description: 'استرجاع الإعدادات من النسخة الاحتياطية' },
         ]);
       const row = new ActionRowBuilder().addComponents(selectMenu);
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
@@ -536,6 +579,43 @@ client.on(Events.InteractionCreate, async interaction => {
     let selected, customId, page, perPage, totalPages, guilds, guildsPage, guildOptions;
     if (interaction.customId === 'dev_main_menu') {
       selected = interaction.values[0];
+      
+      // معالجة خيار استرجاع الإعدادات
+      if (selected === 'dev_restore_settings') {
+        try {
+          if (fs.existsSync(BACKUP_FILE)) {
+            const backupData = fs.readFileSync(BACKUP_FILE, 'utf8');
+            const backup = JSON.parse(backupData);
+            fs.writeFileSync(SETTINGS_FILE, JSON.stringify(backup, null, 2));
+            
+            const embed = new EmbedBuilder()
+              .setTitle('✅ تم استرجاع الإعدادات')
+              .setDescription('تم استرجاع جميع الإعدادات من النسخة الاحتياطية بنجاح.')
+              .setColor(0x27ae60)
+              .setTimestamp();
+            
+            return interaction.reply({ embeds: [embed], ephemeral: true });
+          } else {
+            const embed = new EmbedBuilder()
+              .setTitle('❌ لا توجد نسخة احتياطية')
+              .setDescription('لم يتم العثور على نسخة احتياطية للإعدادات.')
+              .setColor(0xe74c3c)
+              .setTimestamp();
+            
+            return interaction.reply({ embeds: [embed], ephemeral: true });
+          }
+        } catch (error) {
+          console.error('خطأ في استرجاع الإعدادات:', error);
+          const embed = new EmbedBuilder()
+            .setTitle('❌ خطأ في الاسترجاع')
+            .setDescription('حدث خطأ أثناء استرجاع الإعدادات.')
+            .setColor(0xe74c3c)
+            .setTimestamp();
+          
+          return interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+      }
+      
       guilds = Array.from(interaction.client.guilds.cache.values());
       page = 0;
       perPage = 23;
@@ -988,7 +1068,20 @@ client.on(Events.InteractionCreate, async interaction => {
       }
       
       const voteMessage = await gameChannel.send({ content: `<@&${settings.voteMessage.roleId}>`, embeds: [voteEmbed] });
-      await voteMessage.react(settings.voteMessage.emoji);
+      
+      // إضافة الإيموجي على الرسالة
+      try {
+        await voteMessage.react(settings.voteMessage.emoji);
+      } catch (error) {
+        console.error('خطأ في إضافة الإيموجي:', error);
+        // محاولة إضافة إيموجي افتراضي إذا فشل الإيموجي المخصص
+        try {
+          await voteMessage.react('👍');
+        } catch (err) {
+          console.error('خطأ في إضافة الإيموجي الافتراضي:', err);
+        }
+      }
+      
       await sendButtonLog('start_vote', 'بدء تصويت قيم');
       await interaction.editReply({ content: '✅ تم إرسال رسالة التصويت بنجاح.' });
     } else if (interaction.customId === 'end_game') {
